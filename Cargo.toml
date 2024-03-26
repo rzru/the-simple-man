@@ -1,0 +1,17 @@
+[package]
+name = "the-simple-man"
+version = "0.0.1"
+authors = ["rzru"]
+edition = "2021"
+
+[dependencies]
+agb = "0.19.1"
+
+[profile.dev]
+opt-level = 3
+debug = true
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+debug = true
