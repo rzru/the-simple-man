@@ -10,7 +10,7 @@ use agb::{
 use crate::tiles::{CHAR_BACK, CHAR_FRONT, CHAR_LEFT, CHAR_RIGHT, HOUSE_1};
 
 trait Entity<'a> {
-    fn new(tag: &'static Tag, gfx: &'a OamManaged, coords: (i32, i32)) -> Self;
+    fn new(tag: &'static Tag, gfx: &'a OamManaged, coords: (u16, u16)) -> Self;
     fn tick(&mut self, input: &ButtonController, gfx: &'a OamManaged);
 }
 
@@ -21,11 +21,11 @@ struct Char<'a> {
 }
 
 impl<'a> Entity<'a> for Char<'a> {
-    fn new(tag: &'static Tag, gfx: &'a OamManaged, (x, y): (i32, i32)) -> Self {
+    fn new(tag: &'static Tag, gfx: &'a OamManaged, (x, y): (u16, u16)) -> Self {
         let sprite = tag.animation_sprite(0);
 
         let mut sprite = gfx.object_sprite(sprite);
-        sprite.set_position((x, y)).show();
+        sprite.set_x(x).set_y(y).show();
 
         Self {
             sprite,
@@ -74,15 +74,15 @@ struct StaticObj<'a> {
     sprite: Object<'a>,
     current: &'static Tag,
     current_idx: usize,
-    coords: (i32, i32),
+    coords: (u16, u16),
 }
 
 impl<'a> Entity<'a> for StaticObj<'a> {
-    fn new(tag: &'static Tag, gfx: &'a OamManaged, (x, y): (i32, i32)) -> Self {
+    fn new(tag: &'static Tag, gfx: &'a OamManaged, (x, y): (u16, u16)) -> Self {
         let sprite = tag.animation_sprite(0);
 
         let mut sprite = gfx.object_sprite(sprite);
-        sprite.set_position((x, y)).show();
+        sprite.set_x(x).set_y(y).show();
 
         Self {
             sprite,
@@ -94,13 +94,9 @@ impl<'a> Entity<'a> for StaticObj<'a> {
 
     fn tick(&mut self, input: &ButtonController, gfx: &'a OamManaged) {
         match input.x_tri() {
-            Tri::Negative => self.coords.0 += 2,
-            Tri::Positive => self.coords.0 -= 2,
-            Tri::Zero => match input.y_tri() {
-                Tri::Negative => self.coords.1 += 2,
-                Tri::Positive => self.coords.1 -= 2,
-                Tri::Zero => {}
-            },
+            Tri::Negative => self.coords.0 -= 1,
+            Tri::Positive => self.coords.0 += 1,
+            Tri::Zero => {}
         }
 
         self.current_idx = if self.current_idx > self.current.sprites().len() {
@@ -111,7 +107,7 @@ impl<'a> Entity<'a> for StaticObj<'a> {
 
         self.sprite
             .set_sprite(gfx.sprite(self.current.animation_sprite(self.current_idx)));
-        self.sprite.set_position(self.coords);
+        self.sprite.set_x(self.coords.0).set_y(self.coords.1);
     }
 }
 
@@ -134,8 +130,13 @@ pub fn run(mut gba: Gba) -> ! {
 
         if count % 5 == 0 {
             main_character.tick(&input, &gfx);
-            house.tick(&input, &gfx);
 
+            if count % 20 == 0 {
+                house.tick(&input, &gfx);
+            }
+        }
+
+        if count == 100 {
             count = 0
         }
 
