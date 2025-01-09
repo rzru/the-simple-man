@@ -1,144 +1,248 @@
-use core::{u16, usize};
+use core::fmt::Arguments;
 
 use agb::{
-    display::object::{OamManaged, Object, Tag},
-    input::{Button, ButtonController, Tri},
+    display::{
+        object::{OamManaged, Object, Tag},
+        tiled::{MapLoan, RegularBackgroundSize, RegularMap, Tiled0, TiledMap, VRamManager},
+        Priority,
+    },
+    include_background_gfx,
+    input::{ButtonController, Tri},
     interrupt::VBlank,
+    mgba::{DebugLevel, Mgba},
     Gba,
 };
 
-use crate::tiles::{CHAR_BACK, CHAR_FRONT, CHAR_LEFT, CHAR_RIGHT, HOUSE_1};
+use mapgen::generate_background_map;
+
+use crate::tiles::BALL_TAG;
+
+include_background_gfx!(test_bg, tiles => 256 "gfx/bg-tiles.png");
+
+const INITIAL_COORDINATES: (i32, i32) = (104, 64);
+const STEP: i32 = 24;
 
 trait Entity<'a> {
-    fn new(tag: &'static Tag, gfx: &'a OamManaged, coords: (i32, i32)) -> Self;
-    fn tick(&mut self, input: &ButtonController, gfx: &'a OamManaged);
+    fn new(tag: &'static Tag, gfx: &'a OamManaged) -> Self;
+    fn place(&mut self, coords: (i32, i32));
+    fn process(&mut self, input: &ButtonController);
+    fn tick(&mut self, gfx: &'a OamManaged);
 }
 
 struct Char<'a> {
+    tag: &'a Tag,
+    frame: usize,
     sprite: Object<'a>,
-    current: &'static Tag,
-    current_idx: usize,
 }
 
 impl<'a> Entity<'a> for Char<'a> {
-    fn new(tag: &'static Tag, gfx: &'a OamManaged, (x, y): (i32, i32)) -> Self {
-        let sprite = tag.animation_sprite(0);
-
-        let mut sprite = gfx.object_sprite(sprite);
-        sprite.set_position((x, y)).show();
+    fn new(tag: &'static Tag, gfx: &'a OamManaged) -> Self {
+        let frame = 0;
 
         Self {
-            sprite,
-            current: tag,
-            current_idx: 0,
+            tag,
+            frame,
+            sprite: gfx.object_sprite(tag.animation_sprite(frame)),
         }
     }
 
-    fn tick(&mut self, input: &ButtonController, gfx: &'a OamManaged) {
-        let mut animate = false;
+    fn place(&mut self, (x, y): (i32, i32)) {
+        self.sprite.set_position((x, y)).show();
+    }
 
-        if input.is_pressed(Button::DOWN) {
-            self.current = CHAR_FRONT;
-            animate = true
-        }
+    fn process(&mut self, input: &ButtonController) {
+        todo!()
+    }
 
-        if input.is_pressed(Button::UP) {
-            self.current = CHAR_BACK;
-            animate = true
-        }
-
-        if input.is_pressed(Button::RIGHT) {
-            self.current = CHAR_RIGHT;
-            animate = true
-        }
-
-        if input.is_pressed(Button::LEFT) {
-            self.current = CHAR_LEFT;
-            animate = true
-        }
-
-        if animate {
-            self.current_idx = if self.current_idx > self.current.sprites().len() {
-                0
-            } else {
-                self.current_idx + 1
-            };
-
-            self.sprite
-                .set_sprite(gfx.sprite(self.current.animation_sprite(self.current_idx)));
-        }
+    fn tick(&mut self, gfx: &'a OamManaged) {
+        todo!()
     }
 }
 
-struct StaticObj<'a> {
-    sprite: Object<'a>,
-    current: &'static Tag,
-    current_idx: usize,
-    coords: (i32, i32),
+struct Background<'a> {
+    bg: MapLoan<'a, RegularMap>,
+    tilemap: [[usize; 32]; 32],
 }
 
-impl<'a> Entity<'a> for StaticObj<'a> {
-    fn new(tag: &'static Tag, gfx: &'a OamManaged, (x, y): (i32, i32)) -> Self {
-        let sprite = tag.animation_sprite(0);
+impl<'a> Background<'a> {
+    fn new(bg_gfx: &'a Tiled0, mut vram: &mut VRamManager) -> Self {
+        vram.set_background_palettes(test_bg::PALETTES);
 
-        let mut sprite = gfx.object_sprite(sprite);
-        sprite.set_position((x, y)).show();
+        let tileset = &test_bg::tiles.tiles;
+        let tilemap = generate_background_map!("gfx/bg.png");
 
-        Self {
-            sprite,
-            current: tag,
-            current_idx: 0,
-            coords: (x, y),
-        }
-    }
+        let mut bg = bg_gfx.background(
+            Priority::P0,
+            RegularBackgroundSize::Background32x32,
+            tileset.format(),
+        );
 
-    fn tick(&mut self, input: &ButtonController, gfx: &'a OamManaged) {
-        match input.x_tri() {
-            Tri::Negative => self.coords.0 += 2,
-            Tri::Positive => self.coords.0 -= 2,
-            Tri::Zero => match input.y_tri() {
-                Tri::Negative => self.coords.1 += 2,
-                Tri::Positive => self.coords.1 -= 2,
-                Tri::Zero => {}
-            },
+        for y in 0..32u16 {
+            for x in 0..32u16 {
+                bg.set_tile(
+                    &mut vram,
+                    (x, y),
+                    &tileset,
+                    test_bg::tiles.tile_settings[tilemap[y as usize][x as usize]],
+                );
+            }
         }
 
-        self.current_idx = if self.current_idx > self.current.sprites().len() {
-            0
-        } else {
-            self.current_idx + 1
-        };
+        bg.commit(&mut vram);
+        bg.set_visible(true);
 
-        self.sprite
-            .set_sprite(gfx.sprite(self.current.animation_sprite(self.current_idx)));
-        self.sprite.set_position(self.coords);
+        Self { bg, tilemap }
     }
 }
 
 pub fn run(mut gba: Gba) -> ! {
-    let gfx = gba.display.object.get_managed();
-
-    let mut house = StaticObj::new(HOUSE_1, &gfx, (10, 10));
-
-    let mut main_character = Char::new(CHAR_FRONT, &gfx, (104, 64));
-
     let vblank = VBlank::get();
     let mut input = ButtonController::new();
-    let mut count = 0;
+
+    let gfx = gba.display.object.get_managed();
+    let (bg_gfx, mut vram) = gba.display.video.tiled0();
+
+    let mut background = Background::new(&bg_gfx, &mut vram);
+
+    let mut char = Char::new(BALL_TAG, &gfx);
+    char.place(INITIAL_COORDINATES);
+
+    let mut scroll_x = 0i16;
+    let mut scroll_y = 0i16;
 
     loop {
         vblank.wait_for_vblank();
         input.update();
 
-        count += 1;
+        match input.x_tri() {
+            Tri::Positive => {
+                if !path_right_blocked((scroll_x + 1, scroll_y), background.tilemap) {
+                    scroll_x += 1
+                }
+            }
+            Tri::Negative => {
+                if !path_left_blocked((scroll_x - 1, scroll_y), background.tilemap) {
+                    scroll_x -= 1
+                }
+            }
+            _ => {}
+        };
 
-        if count % 5 == 0 {
-            main_character.tick(&input, &gfx);
-            house.tick(&input, &gfx);
+        match input.y_tri() {
+            Tri::Positive => {
+                if !path_down_blocked((scroll_x, scroll_y + 1), background.tilemap) {
+                    scroll_y += 1
+                }
+            }
+            Tri::Negative => {
+                if !path_up_blocked((scroll_x, scroll_y - 1), background.tilemap) {
+                    scroll_y -= 1
+                }
+            }
+            _ => {}
+        };
+        // char.process(&input);
+        // char.tick(&gfx);
 
-            count = 0
-        }
+        background.bg.set_scroll_pos((scroll_x, scroll_y));
+        background.bg.commit(&mut vram);
 
         gfx.commit();
     }
+}
+
+fn path_right_blocked((scroll_x, scroll_y): (i16, i16), tilemap: [[usize; 32]; 32]) -> bool {
+    let init_pos_x = INITIAL_COORDINATES.0 as i16;
+    let init_pos_y = INITIAL_COORDINATES.1 as i16;
+
+    let cur_offset_x = init_pos_x + scroll_x;
+
+    if cur_offset_x % 8 != 0 {
+        return false;
+    }
+
+    let cur_tile = cur_offset_x / 8;
+    let last_tile = cur_tile;
+    let next_tile = cur_tile + 3;
+
+    let cur_offset_y = init_pos_y + scroll_y;
+    let cur_tile_y = cur_offset_y / 8;
+
+    let (tile1_y, tile2_y, tile3_y) = (cur_tile_y + 1, cur_tile_y + 2, cur_tile_y + 3);
+
+    tilemap[tile1_y as usize][next_tile as usize] != 5
+        || tilemap[tile2_y as usize][next_tile as usize] != 5
+        || tilemap[tile3_y as usize][next_tile as usize] != 5
+}
+
+fn path_left_blocked((pos_x, pos_y): (i16, i16), tilemap: [[usize; 32]; 32]) -> bool {
+    let init_pos_x = INITIAL_COORDINATES.0 as i16;
+    let init_pos_y = INITIAL_COORDINATES.1 as i16;
+
+    let cur_offset_x = init_pos_x + pos_x;
+
+    if cur_offset_x % 8 != 0 {
+        return false;
+    }
+
+    let cur_tile = cur_offset_x / 8;
+    let last_tile = cur_tile;
+    let next_tile = cur_tile + 4;
+
+    let cur_offset_y = init_pos_y + pos_y;
+    let cur_tile_y = cur_offset_y / 8;
+
+    let (tile1_y, tile2_y, tile3_y) = (cur_tile_y + 1, cur_tile_y + 2, cur_tile_y + 3);
+
+    tilemap[tile1_y as usize][last_tile as usize] != 5
+        || tilemap[tile2_y as usize][last_tile as usize] != 5
+        || tilemap[tile3_y as usize][last_tile as usize] != 5
+}
+
+fn path_up_blocked((pos_x, pos_y): (i16, i16), tilemap: [[usize; 32]; 32]) -> bool {
+    let init_pos_x = INITIAL_COORDINATES.0 as i16;
+    let init_pos_y = INITIAL_COORDINATES.1 as i16;
+
+    let cur_offset_y = init_pos_y + pos_y;
+
+    if cur_offset_y % 8 != 0 {
+        return false;
+    }
+
+    let cur_tile = cur_offset_y / 8;
+    let last_tile = cur_tile;
+    let next_tile = cur_tile + 4;
+
+    let cur_offset_x = init_pos_x + pos_x;
+    let cur_tile_x = cur_offset_x / 8;
+
+    let (tile1_x, tile2_x, tile3_x) = (cur_tile_x + 1, cur_tile_x + 2, cur_tile_x + 3);
+
+    tilemap[last_tile as usize][tile1_x as usize] != 5
+        || tilemap[last_tile as usize][tile2_x as usize] != 5
+        || tilemap[last_tile as usize][tile3_x as usize] != 5
+}
+
+fn path_down_blocked((pos_x, pos_y): (i16, i16), tilemap: [[usize; 32]; 32]) -> bool {
+    let init_pos_x = INITIAL_COORDINATES.0 as i16;
+    let init_pos_y = INITIAL_COORDINATES.1 as i16;
+
+    let cur_offset_y = init_pos_y + pos_y;
+
+    if cur_offset_y % 8 != 0 {
+        return false;
+    }
+
+    let cur_tile = cur_offset_y / 8;
+    let last_tile = cur_tile;
+    let next_tile = cur_tile + 3;
+
+    let cur_offset_x = init_pos_x + pos_x;
+    let cur_tile_x = cur_offset_x / 8;
+
+    let (tile1_x, tile2_x, tile3_x) = (cur_tile_x + 1, cur_tile_x + 2, cur_tile_x + 3);
+
+    tilemap[next_tile as usize][tile1_x as usize] != 5
+        || tilemap[next_tile as usize][tile2_x as usize] != 5
+        || tilemap[next_tile as usize][tile3_x as usize] != 5
 }

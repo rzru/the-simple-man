@@ -5,7 +5,8 @@ authors = ["rzru"]
 edition = "2021"
 
 [dependencies]
-agb = "0.19.1"
+agb = "0.20.5"
+mapgen = { path =  "./mapgen" }
 
 [profile.dev]
 opt-level = 3

@@ -3,13 +3,17 @@ use agb::{
     include_aseprite,
 };
 
-pub const GRAPHICS: &Graphics = include_aseprite!("gfx/char-front.aseprite");
+pub static GRAPHICS: &Graphics = include_aseprite!("gfx/char-front.aseprite");
 
-pub const HOUSES: &Graphics = include_aseprite!("gfx/houses.aseprite");
+pub static BALL_GRAPHICS: &Graphics = include_aseprite!("gfx/ball.aseprite");
 
-pub const CHAR_FRONT: &Tag = GRAPHICS.tags().get("Char Front");
-pub const CHAR_BACK: &Tag = GRAPHICS.tags().get("Char Back");
-pub const CHAR_LEFT: &Tag = GRAPHICS.tags().get("Char Left");
-pub const CHAR_RIGHT: &Tag = GRAPHICS.tags().get("Char Right");
+pub static HOUSES: &Graphics = include_aseprite!("gfx/houses.aseprite");
 
-pub const HOUSE_1: &Tag = HOUSES.tags().get("House-1");
+pub static CHAR_FRONT: &Tag = GRAPHICS.tags().get("Char Front");
+pub static CHAR_BACK: &Tag = GRAPHICS.tags().get("Char Back");
+pub static CHAR_LEFT: &Tag = GRAPHICS.tags().get("Char Left");
+pub static CHAR_RIGHT: &Tag = GRAPHICS.tags().get("Char Right");
+
+pub static BALL_TAG: &Tag = BALL_GRAPHICS.tags().get("Ball");
+
+pub static HOUSE_1: &Tag = HOUSES.tags().get("House-1");
